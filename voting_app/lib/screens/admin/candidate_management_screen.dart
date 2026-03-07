@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
@@ -50,7 +52,8 @@ class _CandidateManagementScreenState extends State<CandidateManagementScreen> {
     final nameCtrl = TextEditingController();
     final bioCtrl = TextEditingController();
     int? selectedPartyId;
-    File? photoFile;
+    XFile? photoXFile;
+    Uint8List? photoPreviewBytes;
 
     if (_parties.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -81,7 +84,11 @@ class _CandidateManagementScreenState extends State<CandidateManagementScreen> {
                       final picker = ImagePicker();
                       final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 600);
                       if (picked != null) {
-                        setDialogState(() => photoFile = File(picked.path));
+                        final bytes = await picked.readAsBytes();
+                        setDialogState(() {
+                          photoXFile = picked;
+                          photoPreviewBytes = bytes;
+                        });
                       }
                     },
                     child: Container(
@@ -91,13 +98,12 @@ class _CandidateManagementScreenState extends State<CandidateManagementScreen> {
                         color: AppTheme.surfaceColor,
                         shape: BoxShape.circle,
                         border: Border.all(color: AppTheme.dividerColor, width: 2),
-                        image: photoFile != null
-                            ? DecorationImage(image: FileImage(photoFile!), fit: BoxFit.cover)
-                            : null,
                       ),
-                      child: photoFile == null
-                          ? const Icon(Icons.person_add_rounded, color: AppTheme.textLight, size: 28)
-                          : null,
+                      child: photoPreviewBytes != null
+                          ? ClipOval(
+                              child: Image.memory(photoPreviewBytes!, fit: BoxFit.cover, width: 80, height: 80),
+                            )
+                          : const Icon(Icons.person_add_rounded, color: AppTheme.textLight, size: 28),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -137,12 +143,26 @@ class _CandidateManagementScreenState extends State<CandidateManagementScreen> {
                 onPressed: () async {
                   if (nameCtrl.text.isEmpty || selectedPartyId == null) return;
                   try {
-                    await _api.createCandidate({
+                    final data = {
                       'name': nameCtrl.text,
                       'election': widget.electionId.toString(),
                       'party': selectedPartyId.toString(),
                       'bio': bioCtrl.text,
-                    }, photo: photoFile);
+                    };
+                    
+                    if (kIsWeb && photoPreviewBytes != null) {
+                      await _api.createCandidate(data,
+                        photoBytes: photoPreviewBytes!.toList(),
+                        photoName: photoXFile?.name ?? 'photo.jpg',
+                      );
+                    } else {
+                      File? photoFile;
+                      if (photoXFile != null) {
+                        photoFile = File(photoXFile!.path);
+                      }
+                      await _api.createCandidate(data, photo: photoFile);
+                    }
+                    
                     Navigator.pop(ctx);
                     _loadData();
                     if (mounted) {
@@ -370,22 +390,16 @@ class _CandidateManagementScreenState extends State<CandidateManagementScreen> {
   void _showEditCandidateDialog(Map<String, dynamic> candidate) {
     final nameCtrl = TextEditingController(text: candidate['name']);
     final bioCtrl = TextEditingController(text: candidate['bio']);
-    int? selectedPartyId = candidate['party']; // Assumes 'party' field exists in candidate object, check API response
-    // If backend returns 'party_id' or nested object, adjust accordingly. 
-    // Looking at serializers, CandidateSerializer has 'party' as PrimaryKey related field, so it should be an ID.
-    // However, CandidateSerializer usually returns nested representation or ID depending on config.
-    // Let's assume it returns ID in 'party' field. If mapped to 'party_name', we might need to find party by name or just re-select.
-    // Actually, createCandidate uses party ID. Let's check serializer.
-    // Assuming 'party' is the ID.
+    int? selectedPartyId;
     
-    // Check if 'party' is ID or object. If object, take ID.
     if (candidate['party'] is Map) {
        selectedPartyId = candidate['party']['id'];
     } else {
        selectedPartyId = candidate['party'];
     }
 
-    File? photoFile;
+    XFile? photoXFile;
+    Uint8List? photoPreviewBytes;
 
     showDialog(
       context: context,
@@ -403,7 +417,11 @@ class _CandidateManagementScreenState extends State<CandidateManagementScreen> {
                       final picker = ImagePicker();
                       final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 600);
                       if (picked != null) {
-                        setDialogState(() => photoFile = File(picked.path));
+                        final bytes = await picked.readAsBytes();
+                        setDialogState(() {
+                          photoXFile = picked;
+                          photoPreviewBytes = bytes;
+                        });
                       }
                     },
                     child: Container(
@@ -413,15 +431,19 @@ class _CandidateManagementScreenState extends State<CandidateManagementScreen> {
                         color: AppTheme.surfaceColor,
                         shape: BoxShape.circle,
                         border: Border.all(color: AppTheme.dividerColor, width: 2),
-                        image: photoFile != null
-                            ? DecorationImage(image: FileImage(photoFile!), fit: BoxFit.cover)
-                            : candidate['photo'] != null
-                                ? DecorationImage(image: NetworkImage(_api.getImageUrl(candidate['photo'])), fit: BoxFit.cover)
-                                : null,
                       ),
-                      child: photoFile == null && candidate['photo'] == null
-                          ? const Icon(Icons.person_outline_rounded, color: AppTheme.textLight, size: 28)
-                          : null,
+                      child: photoPreviewBytes != null
+                          ? ClipOval(
+                              child: Image.memory(photoPreviewBytes!, fit: BoxFit.cover, width: 80, height: 80),
+                            )
+                          : candidate['photo'] != null
+                              ? ClipOval(
+                                  child: Image.network(
+                                    _api.getImageUrl(candidate['photo']),
+                                    fit: BoxFit.cover, width: 80, height: 80,
+                                  ),
+                                )
+                              : const Icon(Icons.person_outline_rounded, color: AppTheme.textLight, size: 28),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -458,12 +480,26 @@ class _CandidateManagementScreenState extends State<CandidateManagementScreen> {
                 onPressed: () async {
                   if (nameCtrl.text.isEmpty || selectedPartyId == null) return;
                   try {
-                    await _api.updateCandidate(candidate['id'], {
+                    final data = {
                       'name': nameCtrl.text,
                       'election': widget.electionId.toString(),
                       'party': selectedPartyId.toString(),
                       'bio': bioCtrl.text,
-                    }, photo: photoFile);
+                    };
+                    
+                    if (kIsWeb && photoPreviewBytes != null) {
+                      await _api.updateCandidate(candidate['id'], data,
+                        photoBytes: photoPreviewBytes!.toList(),
+                        photoName: photoXFile?.name ?? 'photo.jpg',
+                      );
+                    } else {
+                      File? photoFile;
+                      if (photoXFile != null) {
+                        photoFile = File(photoXFile!.path);
+                      }
+                      await _api.updateCandidate(candidate['id'], data, photo: photoFile);
+                    }
+                    
                     Navigator.pop(ctx);
                     _loadData();
                     if (mounted) {

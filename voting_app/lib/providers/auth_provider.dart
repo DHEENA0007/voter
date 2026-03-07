@@ -101,13 +101,13 @@ class AuthProvider with ChangeNotifier {
 
 
   /// Voter Self-Registration
-  Future<bool> voterRegister(Map<String, dynamic> data, {File? photo}) async {
+  Future<bool> voterRegister(Map<String, dynamic> data, {File? photo, dynamic photoXFile}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      await _api.voterRegister(data, photo: photo);
+      await _api.voterRegister(data, photo: photo, photoXFile: photoXFile);
       _isLoading = false;
       notifyListeners();
       return true;

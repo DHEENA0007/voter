@@ -88,7 +88,7 @@ class ApiService {
 
 
 
-  Future<Map<String, dynamic>> voterRegister(Map<String, dynamic> data, {File? photo}) async {
+  Future<Map<String, dynamic>> voterRegister(Map<String, dynamic> data, {File? photo, dynamic photoXFile}) async {
     var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/auth/voter/register/'));
     
     data.forEach((key, value) {
@@ -97,7 +97,18 @@ class ApiService {
       }
     });
 
-    if (photo != null) {
+    // Handle photo upload for both web and mobile
+    if (photoXFile != null) {
+      // Web: use bytes from XFile
+      final bytes = await photoXFile.readAsBytes();
+      final fileName = photoXFile.name ?? 'photo.jpg';
+      request.files.add(http.MultipartFile.fromBytes(
+        'photo',
+        bytes,
+        filename: fileName,
+      ));
+    } else if (photo != null) {
+      // Mobile: use file path
       request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
     }
 
@@ -153,6 +164,29 @@ class ApiService {
     if (photo != null) {
       request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
     }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    return _handleResponse(response);
+  }
+
+  /// Create voter with photo bytes (for web platform)
+  Future<Map<String, dynamic>> createVoterWithBytes(Map<String, dynamic> data, 
+      {required List<int> photoBytes, required String photoName}) async {
+    var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/voters/'));
+    request.headers.addAll({'Authorization': 'Token $_token'});
+    
+    data.forEach((key, value) {
+      if (key != 'photo') {
+        request.fields[key] = value.toString();
+      }
+    });
+
+    request.files.add(http.MultipartFile.fromBytes(
+      'photo',
+      photoBytes,
+      filename: photoName,
+    ));
 
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
@@ -298,13 +332,18 @@ class ApiService {
     return _handleResponse(response);
   }
 
-  Future<Map<String, dynamic>> createParty(String name, String description, {File? symbol}) async {
+  Future<Map<String, dynamic>> createParty(String name, String description, 
+      {File? symbol, List<int>? symbolBytes, String? symbolName}) async {
     var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/parties/'));
     request.headers.addAll({'Authorization': 'Token $_token'});
     request.fields['name'] = name;
     request.fields['description'] = description;
 
-    if (symbol != null) {
+    if (symbolBytes != null) {
+      request.files.add(http.MultipartFile.fromBytes(
+        'symbol', symbolBytes, filename: symbolName ?? 'symbol.png',
+      ));
+    } else if (symbol != null) {
       request.files.add(await http.MultipartFile.fromPath('symbol', symbol.path));
     }
 
@@ -334,7 +373,8 @@ class ApiService {
     return _handleResponse(response);
   }
 
-  Future<Map<String, dynamic>> createCandidate(Map<String, dynamic> data, {File? photo}) async {
+  Future<Map<String, dynamic>> createCandidate(Map<String, dynamic> data, 
+      {File? photo, List<int>? photoBytes, String? photoName}) async {
     var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/candidates/'));
     request.headers.addAll({'Authorization': 'Token $_token'});
     
@@ -344,7 +384,11 @@ class ApiService {
       }
     });
 
-    if (photo != null) {
+    if (photoBytes != null) {
+      request.files.add(http.MultipartFile.fromBytes(
+        'photo', photoBytes, filename: photoName ?? 'photo.jpg',
+      ));
+    } else if (photo != null) {
       request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
     }
 
@@ -353,7 +397,8 @@ class ApiService {
     return _handleResponse(response);
   }
 
-  Future<Map<String, dynamic>> updateCandidate(int id, Map<String, dynamic> data, {File? photo}) async {
+  Future<Map<String, dynamic>> updateCandidate(int id, Map<String, dynamic> data, 
+      {File? photo, List<int>? photoBytes, String? photoName}) async {
     var request = http.MultipartRequest('PUT', Uri.parse('$baseUrl/candidates/$id/'));
     request.headers.addAll({'Authorization': 'Token $_token'});
     
@@ -363,7 +408,11 @@ class ApiService {
       }
     });
 
-    if (photo != null) {
+    if (photoBytes != null) {
+      request.files.add(http.MultipartFile.fromBytes(
+        'photo', photoBytes, filename: photoName ?? 'photo.jpg',
+      ));
+    } else if (photo != null) {
       request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
     }
 

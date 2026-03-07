@@ -475,6 +475,8 @@ class _VoterCardScreenState extends State<VoterCardScreen> {
                         ],
                       ),
                       _cardDetail('ADDRESS', _profile!['address'], isMultiLine: true),
+                      if (_profile!['email'] != null && _profile!['email'].toString().isNotEmpty)
+                        _cardDetail('EMAIL', _profile!['email']),
                     ],
                   ),
                 ),

@@ -279,6 +279,14 @@ class _VoterManagementScreenState extends State<VoterManagementScreen>
                         color: AppTheme.textSecondary,
                       ),
                     ),
+                    if (voter['email'] != null && voter['email'].toString().isNotEmpty)
+                      Text(
+                        '📧 ${voter['email']}',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
                     const SizedBox(height: 2),
                     Text(
                       'ID: ${voter['voter_id']} • ${voter['mobile_number'] ?? ''}',

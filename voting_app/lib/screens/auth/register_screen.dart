@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -23,12 +24,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passcodeController = TextEditingController();
   final _confirmPasscodeController = TextEditingController();
   final _fatherNameController = TextEditingController();
+  final _emailController = TextEditingController();
   
   bool _fingerprintCaptured = false;
 
   String _gender = 'M';
   DateTime? _selectedDob;
-  File? _photo;
+  XFile? _pickedImage; // Use XFile instead of File for web compatibility
   bool _obscurePasscode = true;
 
   @override
@@ -40,6 +42,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _passcodeController.dispose();
     _confirmPasscodeController.dispose();
     _fatherNameController.dispose();
+    _emailController.dispose();
     super.dispose();
   }
 
@@ -70,7 +73,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery, maxWidth: 800);
     if (pickedFile != null) {
-      setState(() => _photo = File(pickedFile.path));
+      setState(() => _pickedImage = pickedFile);
     }
   }
 
@@ -79,7 +82,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (_photo == null) {
+    if (_pickedImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please upload a photo')),
       );
@@ -106,13 +109,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
       'date_of_birth': _dobController.text,
       'gender': _gender,
       'address': _addressController.text.trim(),
+      'email': _emailController.text.trim(),
       'mobile_number': _mobileController.text.trim(),
       'passcode': _passcodeController.text,
       'biometric_enabled': false,
     };
 
     final authProvider = context.read<AuthProvider>();
-    final success = await authProvider.voterRegister(data, photo: _photo);
+    
+    // For web: pass XFile; for mobile: pass File
+    File? photoFile;
+    if (!kIsWeb && _pickedImage != null) {
+      photoFile = File(_pickedImage!.path);
+    }
+    
+    final success = await authProvider.voterRegister(
+      data, 
+      photo: photoFile,
+      photoXFile: kIsWeb ? _pickedImage : null,
+    );
 
     if (success && mounted) {
       showDialog(
@@ -138,7 +153,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 10),
               Text(
-                'Your voter application has been submitted successfully. Please wait for admin approval.',
+                'Your voter application has been submitted successfully. A confirmation email has been sent to your email address. Please wait for admin approval.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(fontSize: 14, color: AppTheme.textSecondary),
               ),
@@ -214,37 +229,39 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           Center(
                             child: GestureDetector(
                               onTap: _pickPhoto,
-                              child: Container(
-                                width: 100,
-                                height: 100,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.surfaceColor,
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: AppTheme.dividerColor, width: 2),
-                                  image: _photo != null
-                                      ? DecorationImage(
-                                          image: FileImage(_photo!),
-                                          fit: BoxFit.cover,
-                                        )
-                                      : null,
-                                ),
-                                child: _photo == null
-                                    ? Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          const Icon(Icons.camera_alt_rounded,
-                                              color: AppTheme.textLight, size: 28),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            'Upload',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 11,
-                                              color: AppTheme.textLight,
-                                            ),
+                              child: FutureBuilder<Widget>(
+                                future: _buildPhotoPreview(),
+                                builder: (context, snapshot) {
+                                  return Container(
+                                    width: 100,
+                                    height: 100,
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.surfaceColor,
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: AppTheme.dividerColor, width: 2),
+                                    ),
+                                    child: snapshot.hasData 
+                                        ? ClipRRect(
+                                            borderRadius: BorderRadius.circular(18),
+                                            child: snapshot.data!,
+                                          )
+                                        : Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              const Icon(Icons.camera_alt_rounded,
+                                                  color: AppTheme.textLight, size: 28),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'Upload',
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 11,
+                                                  color: AppTheme.textLight,
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                        ],
-                                      )
-                                    : null,
+                                  );
+                                },
                               ),
                             ),
                           ),
@@ -306,6 +323,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             icon: Icons.location_on_outlined,
                             maxLines: 2,
                             validator: (v) => v!.isEmpty ? 'Enter address' : null,
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Email field
+                          _buildField(
+                            controller: _emailController,
+                            label: 'Email Address',
+                            icon: Icons.email_outlined,
+                            keyboardType: TextInputType.emailAddress,
+                            validator: (v) {
+                              if (v == null || v.isEmpty) return 'Enter email address';
+                              final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                              if (!emailRegex.hasMatch(v)) return 'Enter a valid email';
+                              return null;
+                            },
                           ),
                           const SizedBox(height: 16),
 
@@ -396,6 +428,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       ),
     );
+  }
+
+  /// Build the photo preview widget - handles both web and mobile
+  Future<Widget> _buildPhotoPreview() async {
+    if (_pickedImage == null) {
+      return const SizedBox.shrink();
+    }
+    
+    if (kIsWeb) {
+      // For web, use bytes
+      final bytes = await _pickedImage!.readAsBytes();
+      return Image.memory(bytes, fit: BoxFit.cover, width: 100, height: 100);
+    } else {
+      // For mobile, use File
+      return Image.file(File(_pickedImage!.path), fit: BoxFit.cover, width: 100, height: 100);
+    }
   }
 
   Widget _genderChip(String value, String label, IconData icon) {

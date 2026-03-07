@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
@@ -39,7 +41,8 @@ class _PartyManagementScreenState extends State<PartyManagementScreen> {
   void _showCreateDialog() {
     final nameCtrl = TextEditingController();
     final descCtrl = TextEditingController();
-    File? symbolFile;
+    XFile? symbolXFile;
+    Uint8List? symbolPreviewBytes; // For web preview
 
     showDialog(
       context: context,
@@ -58,7 +61,11 @@ class _PartyManagementScreenState extends State<PartyManagementScreen> {
                       final picker = ImagePicker();
                       final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 400);
                       if (picked != null) {
-                        setDialogState(() => symbolFile = File(picked.path));
+                        final bytes = await picked.readAsBytes();
+                        setDialogState(() {
+                          symbolXFile = picked;
+                          symbolPreviewBytes = bytes;
+                        });
                       }
                     },
                     child: Container(
@@ -68,20 +75,20 @@ class _PartyManagementScreenState extends State<PartyManagementScreen> {
                         color: AppTheme.surfaceColor,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: AppTheme.dividerColor, width: 2),
-                        image: symbolFile != null
-                            ? DecorationImage(image: FileImage(symbolFile!), fit: BoxFit.cover)
-                            : null,
                       ),
-                      child: symbolFile == null
-                          ? Column(
+                      child: symbolPreviewBytes != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: Image.memory(symbolPreviewBytes!, fit: BoxFit.cover, width: 80, height: 80),
+                            )
+                          : Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 const Icon(Icons.image_rounded, color: AppTheme.textLight, size: 24),
                                 const SizedBox(height: 4),
                                 Text('Symbol', style: GoogleFonts.inter(fontSize: 10, color: AppTheme.textLight)),
                               ],
-                            )
-                          : null,
+                            ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -107,7 +114,21 @@ class _PartyManagementScreenState extends State<PartyManagementScreen> {
                 onPressed: () async {
                   if (nameCtrl.text.isEmpty) return;
                   try {
-                    await _api.createParty(nameCtrl.text, descCtrl.text, symbol: symbolFile);
+                    if (kIsWeb && symbolPreviewBytes != null) {
+                      // Web: use bytes
+                      await _api.createParty(
+                        nameCtrl.text, descCtrl.text,
+                        symbolBytes: symbolPreviewBytes!.toList(),
+                        symbolName: symbolXFile?.name ?? 'symbol.png',
+                      );
+                    } else {
+                      // Mobile: use File
+                      File? symbolFile;
+                      if (symbolXFile != null) {
+                        symbolFile = File(symbolXFile!.path);
+                      }
+                      await _api.createParty(nameCtrl.text, descCtrl.text, symbol: symbolFile);
+                    }
                     Navigator.pop(ctx);
                     _loadParties();
                     if (mounted) {

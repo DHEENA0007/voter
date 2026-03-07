@@ -105,3 +105,18 @@ REST_FRAMEWORK = {
 # Session timeout (30 minutes)
 SESSION_COOKIE_AGE = 1800
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+# ============================================================
+# Email / SMTP Configuration (Gmail)
+# ============================================================
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'your-gmail@gmail.com')  # Replace with your Gmail
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'beqfbowgctpcmldm')  # App Password
+DEFAULT_FROM_EMAIL = f'Secure Voting System <{EMAIL_HOST_USER}>'
+EMAIL_TIMEOUT = 10
+
+# Template directories for email templates
+TEMPLATES[0]['DIRS'] = [BASE_DIR / 'templates']

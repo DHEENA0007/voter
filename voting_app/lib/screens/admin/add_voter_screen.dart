@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -21,28 +22,24 @@ class _AdminAddVoterScreenState extends State<AdminAddVoterScreen> {
   final _addressCtrl = TextEditingController();
   final _passcodeCtrl = TextEditingController();
   final _fatherNameCtrl = TextEditingController();
-  
+  final _emailCtrl = TextEditingController();
 
-
-  
   DateTime? _dob;
   String _gender = 'Male';
-  File? _photo;
+  XFile? _pickedImage;
   final _picker = ImagePicker();
   bool _isLoading = false;
 
   Future<void> _pickImage() async {
     final picked = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 600);
     if (picked != null) {
-      setState(() => _photo = File(picked.path));
+      setState(() => _pickedImage = picked);
     }
   }
 
-
-
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_photo == null) {
+    if (_pickedImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please upload a photo')),
       );
@@ -55,18 +52,14 @@ class _AdminAddVoterScreenState extends State<AdminAddVoterScreen> {
       return;
     }
 
-
     setState(() => _isLoading = true);
-    
-    // Auto-generate or manual Voter ID? 
-    // Requirement says "User must provide: ... Voter ID". So manual.
     
     final data = {
       'full_name': _nameCtrl.text,
       'father_name': _fatherNameCtrl.text,
       'date_of_birth': DateFormat('yyyy-MM-dd').format(_dob!),
-
       'address': _addressCtrl.text,
+      'email': _emailCtrl.text.trim(),
       'mobile_number': _mobileCtrl.text,
       'voter_id': _voterIdCtrl.text,
       'passcode': _passcodeCtrl.text,
@@ -75,7 +68,21 @@ class _AdminAddVoterScreenState extends State<AdminAddVoterScreen> {
     };
 
     try {
-      await ApiService().createVoter(data, photo: _photo);
+      // Handle photo for both web and mobile
+      File? photoFile;
+      if (!kIsWeb) {
+        photoFile = File(_pickedImage!.path);
+      }
+      
+      // For web, we need to pass XFile bytes via multipart
+      if (kIsWeb) {
+        final bytes = await _pickedImage!.readAsBytes();
+        final fileName = _pickedImage!.name;
+        await ApiService().createVoterWithBytes(data, photoBytes: bytes, photoName: fileName);
+      } else {
+        await ApiService().createVoter(data, photo: photoFile);
+      }
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Voter created successfully')),
@@ -110,21 +117,23 @@ class _AdminAddVoterScreenState extends State<AdminAddVoterScreen> {
               Center(
                 child: GestureDetector(
                   onTap: _pickImage,
-                  child: Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2), width: 2),
-                      image: _photo != null
-                          ? DecorationImage(image: FileImage(_photo!), fit: BoxFit.cover)
-                          : null,
-                      boxShadow: AppTheme.softShadow,
-                    ),
-                    child: _photo == null
-                        ? Icon(Icons.add_a_photo_rounded, size: 32, color: AppTheme.textLight)
-                        : null,
+                  child: FutureBuilder<Widget?>(
+                    future: _buildPhotoPreview(),
+                    builder: (context, snapshot) {
+                      return Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2), width: 2),
+                          boxShadow: AppTheme.softShadow,
+                        ),
+                        child: snapshot.hasData && snapshot.data != null
+                            ? ClipOval(child: snapshot.data!)
+                            : Icon(Icons.add_a_photo_rounded, size: 32, color: AppTheme.textLight),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -143,8 +152,6 @@ class _AdminAddVoterScreenState extends State<AdminAddVoterScreen> {
               
               _buildTextField('Voter ID', _voterIdCtrl, Icons.badge_outlined),
               const SizedBox(height: 16),
-              
-
 
               Row(
                 children: [
@@ -206,6 +213,16 @@ class _AdminAddVoterScreenState extends State<AdminAddVoterScreen> {
               ),
               const SizedBox(height: 16),
 
+              _buildTextField('Email Address', _emailCtrl, Icons.email_outlined, 
+                  inputType: TextInputType.emailAddress,
+                  validatorFn: (val) {
+                    if (val == null || val.isEmpty) return 'Email is required';
+                    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                    if (!emailRegex.hasMatch(val)) return 'Enter a valid email';
+                    return null;
+                  }),
+              const SizedBox(height: 16),
+
               _buildTextField('Mobile Number', _mobileCtrl, Icons.phone_android_rounded, 
                   inputType: TextInputType.phone),
               const SizedBox(height: 16),
@@ -217,8 +234,6 @@ class _AdminAddVoterScreenState extends State<AdminAddVoterScreen> {
                   isPassword: true, inputType: TextInputType.number),
               
               const SizedBox(height: 24),
-
-
               
               const SizedBox(height: 32),
               
@@ -244,14 +259,26 @@ class _AdminAddVoterScreenState extends State<AdminAddVoterScreen> {
     );
   }
 
+  Future<Widget?> _buildPhotoPreview() async {
+    if (_pickedImage == null) return null;
+    
+    if (kIsWeb) {
+      final bytes = await _pickedImage!.readAsBytes();
+      return Image.memory(bytes, fit: BoxFit.cover, width: 100, height: 100);
+    } else {
+      return Image.file(File(_pickedImage!.path), fit: BoxFit.cover, width: 100, height: 100);
+    }
+  }
+
   Widget _buildTextField(String label, TextEditingController ctrl, IconData icon, 
-      {bool isPassword = false, TextInputType? inputType, int maxLines = 1}) {
+      {bool isPassword = false, TextInputType? inputType, int maxLines = 1, 
+       String? Function(String?)? validatorFn}) {
     return TextFormField(
       controller: ctrl,
       obscureText: isPassword,
       keyboardType: inputType,
       maxLines: maxLines,
-      validator: (val) => val == null || val.isEmpty ? '$label is required' : null,
+      validator: validatorFn ?? (val) => val == null || val.isEmpty ? '$label is required' : null,
       style: GoogleFonts.inter(color: AppTheme.textPrimary),
       decoration: InputDecoration(
         labelText: label,

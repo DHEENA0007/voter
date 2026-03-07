@@ -3,14 +3,14 @@ Django Admin registration for Voting System models.
 """
 
 from django.contrib import admin
-from .models import Voter, Election, Party, Candidate, Vote
+from .models import Voter, Election, Party, Candidate, Vote, VoterCorrection, EmailNotification
 
 
 @admin.register(Voter)
 class VoterAdmin(admin.ModelAdmin):
-    list_display = ['voter_id', 'full_name', 'mobile_number', 'status', 'created_at']
+    list_display = ['voter_id', 'full_name', 'email', 'mobile_number', 'status', 'created_at']
     list_filter = ['status', 'gender']
-    search_fields = ['voter_id', 'full_name', 'mobile_number']
+    search_fields = ['voter_id', 'full_name', 'mobile_number', 'email']
     list_editable = ['status']
 
 
@@ -39,3 +39,18 @@ class VoteAdmin(admin.ModelAdmin):
     list_display = ['voter', 'election', 'candidate', 'voted_at']
     list_filter = ['election']
     readonly_fields = ['vote_hash']
+
+
+@admin.register(VoterCorrection)
+class VoterCorrectionAdmin(admin.ModelAdmin):
+    list_display = ['voter', 'requested_full_name', 'status', 'created_at']
+    list_filter = ['status']
+
+
+@admin.register(EmailNotification)
+class EmailNotificationAdmin(admin.ModelAdmin):
+    list_display = ['recipient_email', 'notification_type', 'subject', 'success', 'sent_at']
+    list_filter = ['notification_type', 'success']
+    search_fields = ['recipient_email', 'subject']
+    readonly_fields = ['recipient_email', 'recipient_name', 'notification_type', 'subject', 'body', 'sent_at', 'success', 'error_message']
+

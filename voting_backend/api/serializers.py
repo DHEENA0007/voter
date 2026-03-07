@@ -21,7 +21,7 @@ class VoterRegistrationSerializer(serializers.ModelSerializer):
         model = Voter
         fields = [
             'id', 'voter_id', 'full_name', 'father_name', 'date_of_birth', 'gender',
-            'address', 'mobile_number', 'photo', 'passcode', 'status',
+            'address', 'email', 'mobile_number', 'photo', 'passcode', 'status',
             'biometric_enabled', 'created_at'
         ]
         read_only_fields = ['id', 'status', 'created_at']
@@ -42,7 +42,7 @@ class VoterSerializer(serializers.ModelSerializer):
         model = Voter
         fields = [
             'id', 'voter_id', 'full_name', 'father_name', 'date_of_birth', 'gender',
-            'address', 'mobile_number', 'photo', 'status',
+            'address', 'email', 'mobile_number', 'photo', 'status',
             'biometric_enabled', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']

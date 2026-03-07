@@ -24,6 +24,11 @@ from .serializers import (
     VoteCastSerializer, VoteSerializer, DashboardSerializer,
     ElectionResultSerializer, UserSerializer, VoterCorrectionSerializer
 )
+from .email_service import (
+    send_voter_approved_email, send_voter_rejected_email,
+    send_correction_status_email, send_new_election_email,
+    send_registration_confirmation_email
+)
 
 
 # ============================================================
@@ -171,8 +176,12 @@ def voter_register(request):
     serializer = VoterRegistrationSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     voter = serializer.save()
+    
+    # Send registration confirmation email
+    send_registration_confirmation_email(voter)
+    
     return Response({
-        'message': 'Registration submitted successfully. Please wait for admin approval.',
+        'message': 'Registration submitted successfully. Please wait for admin approval. A confirmation email has been sent.',
         'voter': VoterSerializer(voter).data
     }, status=status.HTTP_201_CREATED)
 
@@ -301,9 +310,14 @@ class VoterManagementViewSet(viewsets.ModelViewSet):
 
         voter.status = 'approved'
         voter.save()
+        
+        # Send approval email with Voter ID
+        email_sent = send_voter_approved_email(voter)
+        
         return Response({
             'message': f'Voter {voter.full_name} approved successfully',
-            'voter_id': voter.voter_id
+            'voter_id': voter.voter_id,
+            'email_sent': email_sent,
         })
 
     @action(detail=True, methods=['post'])
@@ -312,6 +326,10 @@ class VoterManagementViewSet(viewsets.ModelViewSet):
         voter = self.get_object()
         voter.status = 'rejected'
         voter.save()
+        
+        # Send rejection email
+        send_voter_rejected_email(voter)
+        
         return Response({'message': f'Voter {voter.full_name} rejected'})
 
     @action(detail=True, methods=['post'])
@@ -374,7 +392,15 @@ class ElectionViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Cannot restart a closed election'}, status=status.HTTP_400_BAD_REQUEST)
         election.status = 'live'
         election.save()
-        return Response({'message': f'Election "{election.name}" is now live'})
+        
+        # Send email notification to all approved voters about the new live election
+        email_result = send_new_election_email(election)
+        
+        return Response({
+            'message': f'Election "{election.name}" is now live',
+            'emails_sent': email_result.get('sent', 0),
+            'emails_failed': email_result.get('failed', 0),
+        })
 
     @action(detail=True, methods=['post'])
     def stop(self, request, pk=None):
@@ -467,6 +493,24 @@ class PartyViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         return [IsAdminUser()]
 
+    def perform_destroy(self, instance):
+        """Delete the party and clean up associated media files."""
+        # Delete candidate photos belonging to this party
+        for candidate in instance.candidates.all():
+            if candidate.photo:
+                try:
+                    candidate.photo.delete(save=False)
+                except Exception:
+                    pass
+        # Delete party symbol file
+        if instance.symbol:
+            try:
+                instance.symbol.delete(save=False)
+            except Exception:
+                pass
+        # Now delete the party (cascades to candidates and votes)
+        instance.delete()
+
 
 # ============================================================
 # Candidate Management (Admin)
@@ -488,6 +532,15 @@ class CandidateViewSet(viewsets.ModelViewSet):
         if election_id:
             queryset = queryset.filter(election_id=election_id)
         return queryset
+
+    def perform_destroy(self, instance):
+        """Delete the candidate and clean up the photo file."""
+        if instance.photo:
+            try:
+                instance.photo.delete(save=False)
+            except Exception:
+                pass
+        instance.delete()
 
 
 # ============================================================
@@ -678,6 +731,10 @@ class VoterCorrectionViewSet(viewsets.ModelViewSet):
         
         correction.status = 'approved'
         correction.save()
+        
+        # Send email notification about correction approval
+        send_correction_status_email(correction, 'approved')
+        
         return Response({'message': 'Correction approved and applied'})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
@@ -689,6 +746,10 @@ class VoterCorrectionViewSet(viewsets.ModelViewSet):
         correction.status = 'rejected'
         correction.admin_notes = request.data.get('notes', '')
         correction.save()
+        
+        # Send email notification about correction rejection
+        send_correction_status_email(correction, 'rejected')
+        
         return Response({'message': 'Correction rejected'})
 
 
