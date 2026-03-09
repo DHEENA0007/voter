@@ -13,6 +13,34 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+def _send_and_log_email(voter, subject, plain_body, html_body, notification_type):
+    """Internal helper to send and log email with consistent error handling."""
+    try:
+        msg = EmailMultiAlternatives(
+            subject=subject,
+            body=plain_body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[voter.email],
+        )
+        if html_body:
+            msg.attach_alternative(html_body, "text/html")
+        msg.send(fail_silently=False)
+        
+        _log_email(voter.email, voter.full_name, notification_type, subject, plain_body)
+        logger.info(f"Email ({notification_type}) sent to {voter.email}")
+        return True
+    except Exception as e:
+        _log_email(voter.email, voter.full_name, notification_type, subject, plain_body, 
+                   success=False, error_message=str(e))
+        error_msg = str(e)
+        if '535' in error_msg:
+            logger.error(f"Failed to send {notification_type} email to {voter.email}: SMTP Authentication Rejected (535). "
+                         "Tip: Ensure Gmail 2-Step Verification is ON and a fresh App Password is being used.")
+        else:
+            logger.error(f"Failed to send {notification_type} email to {voter.email}: {e}")
+        return False
+
+
 def _log_email(recipient_email, recipient_name, notification_type, subject, body, success=True, error_message=None):
     """Log email to the EmailNotification model."""
     from .models import EmailNotification
@@ -127,24 +155,7 @@ Keep your Voter ID and passcode safe. Do not share them with anyone.
 Secure Mobile Biometric Voting System
 """
 
-    try:
-        msg = EmailMultiAlternatives(
-            subject=subject,
-            body=plain_body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[voter.email],
-        )
-        msg.attach_alternative(html_body, "text/html")
-        msg.send(fail_silently=False)
-        
-        _log_email(voter.email, voter.full_name, 'voter_approved', subject, plain_body)
-        logger.info(f"Approval email sent to {voter.email}")
-        return True
-    except Exception as e:
-        _log_email(voter.email, voter.full_name, 'voter_approved', subject, plain_body, 
-                   success=False, error_message=str(e))
-        logger.error(f"Failed to send approval email to {voter.email}: {e}")
-        return False
+    return _send_and_log_email(voter, subject, plain_body, html_body, 'voter_approved')
 
 
 def send_voter_rejected_email(voter, reason=''):
@@ -180,17 +191,7 @@ def send_voter_rejected_email(voter, reason=''):
     
     plain_body = f"Dear {voter.full_name},\n\nYour voter registration application has been rejected.\n{f'Reason: {reason}' if reason else ''}\n\nIf you believe this is an error, please contact the election commission.\n"
 
-    try:
-        msg = EmailMultiAlternatives(subject, plain_body, settings.DEFAULT_FROM_EMAIL, [voter.email])
-        msg.attach_alternative(html_body, "text/html")
-        msg.send(fail_silently=False)
-        _log_email(voter.email, voter.full_name, 'voter_rejected', subject, plain_body)
-        return True
-    except Exception as e:
-        _log_email(voter.email, voter.full_name, 'voter_rejected', subject, plain_body,
-                   success=False, error_message=str(e))
-        logger.error(f"Failed to send rejection email to {voter.email}: {e}")
-        return False
+    return _send_and_log_email(voter, subject, plain_body, html_body, 'voter_rejected')
 
 
 def send_correction_status_email(correction, status):
@@ -239,19 +240,8 @@ def send_correction_status_email(correction, status):
 
     plain_body = f"Dear {voter.full_name},\n\nYour voter card correction request has been {status_text}.\n\nRequested Name: {correction.requested_full_name}\n"
 
-    try:
-        msg = EmailMultiAlternatives(subject, plain_body, settings.DEFAULT_FROM_EMAIL, [voter.email])
-        msg.attach_alternative(html_body, "text/html")
-        msg.send(fail_silently=False)
-        notification_type = 'correction_approved' if status == 'approved' else 'correction_rejected'
-        _log_email(voter.email, voter.full_name, notification_type, subject, plain_body)
-        return True
-    except Exception as e:
-        notification_type = 'correction_approved' if status == 'approved' else 'correction_rejected'
-        _log_email(voter.email, voter.full_name, notification_type, subject, plain_body,
-                   success=False, error_message=str(e))
-        logger.error(f"Failed to send correction email to {voter.email}: {e}")
-        return False
+    notification_type = 'correction_approved' if status == 'approved' else 'correction_rejected'
+    return _send_and_log_email(voter, subject, plain_body, html_body, notification_type)
 
 
 def send_new_election_email(election, voters=None):
@@ -319,17 +309,10 @@ def send_new_election_email(election, voters=None):
         
         plain_body = f"Dear {voter.full_name},\n\nA new election has been announced: {election.name}\n\n{election.description}\n\nStart: {election.start_date}\nEnd: {election.end_date}\n\nPlease login to the Secure Voting App to cast your vote.\n"
 
-        try:
-            msg = EmailMultiAlternatives(subject, plain_body, settings.DEFAULT_FROM_EMAIL, [voter.email])
-            msg.attach_alternative(html_body, "text/html")
-            msg.send(fail_silently=False)
-            _log_email(voter.email, voter.full_name, 'new_election', subject, plain_body)
+        if _send_and_log_email(voter, subject, plain_body, html_body, 'new_election'):
             success_count += 1
-        except Exception as e:
-            _log_email(voter.email, voter.full_name, 'new_election', subject, plain_body,
-                       success=False, error_message=str(e))
+        else:
             fail_count += 1
-            logger.error(f"Failed to send election email to {voter.email}: {e}")
     
     return {'sent': success_count, 'failed': fail_count}
 
@@ -378,14 +361,4 @@ def send_registration_confirmation_email(voter):
     
     plain_body = f"Dear {voter.full_name},\n\nThank you for submitting your voter registration.\nYour application is pending review by the admin.\n\nYou will receive an email once your application is processed.\n"
 
-    try:
-        msg = EmailMultiAlternatives(subject, plain_body, settings.DEFAULT_FROM_EMAIL, [voter.email])
-        msg.attach_alternative(html_body, "text/html")
-        msg.send(fail_silently=False)
-        _log_email(voter.email, voter.full_name, 'general', subject, plain_body)
-        return True
-    except Exception as e:
-        _log_email(voter.email, voter.full_name, 'general', subject, plain_body,
-                   success=False, error_message=str(e))
-        logger.error(f"Failed to send registration confirmation to {voter.email}: {e}")
-        return False
+    return _send_and_log_email(voter, subject, plain_body, html_body, 'general')

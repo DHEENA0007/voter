@@ -109,12 +109,20 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 # ============================================================
 # Email / SMTP Configuration (Gmail)
 # ============================================================
+# IMPORTANT: To use Gmail, you MUST enable 2-Step Verification and 
+# generate an "App Password" at: https://myaccount.google.com/security
+# ------------------------------------------------------------
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'aarthideepika@gmail.com')  # Replace with your Gmail
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'beqfbowgctpcmldm')  # App Password
+
+# We recommend setting these in your environment variables:
+# export EMAIL_HOST_USER='your-email@gmail.com'
+# export EMAIL_HOST_PASSWORD='xxxx xxxx xxxx xxxx'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'aarthideepika588@gmail.com')  
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'xija vxbv usmw jjfw')  
+
 DEFAULT_FROM_EMAIL = f'Secure Voting System <{EMAIL_HOST_USER}>'
 EMAIL_TIMEOUT = 10
 
