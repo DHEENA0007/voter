@@ -158,11 +158,12 @@ class _AdminAddVoterScreenState extends State<AdminAddVoterScreen> {
                   Expanded(
                     child: GestureDetector(
                       onTap: () async {
+                        final eighteenYearsAgo = DateTime.now().subtract(const Duration(days: 6574)); // 18 years + leap days
                         final date = await showDatePicker(
                           context: context,
-                          initialDate: DateTime(2000),
+                          initialDate: eighteenYearsAgo.isBefore(DateTime(2000)) ? DateTime(2000) : eighteenYearsAgo,
                           firstDate: DateTime(1900),
-                          lastDate: DateTime.now(),
+                          lastDate: eighteenYearsAgo,
                         );
                         if (date != null) setState(() => _dob = date);
                       },

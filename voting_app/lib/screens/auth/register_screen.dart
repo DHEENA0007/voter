@@ -47,11 +47,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _pickDate() async {
+    final eighteenYearsAgo = DateTime.now().subtract(const Duration(days: 6574)); // 18 years + leap days
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime(2000, 1, 1),
+      initialDate: eighteenYearsAgo.isBefore(DateTime(2000)) ? DateTime(2000) : eighteenYearsAgo,
       firstDate: DateTime(1920),
-      lastDate: DateTime.now().subtract(const Duration(days: 6570)), // 18+ years
+      lastDate: eighteenYearsAgo,
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(

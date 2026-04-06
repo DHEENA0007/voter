@@ -69,7 +69,42 @@ class _VoterManagementScreenState extends State<VoterManagementScreen>
     }
   }
 
-  Future<void> _performAction(int id, String action) async {
+  int _calculateAge(dynamic dob) {
+    if (dob == null) return 0;
+    try {
+      DateTime birthDate = DateTime.parse(dob.toString());
+      DateTime today = DateTime.now();
+      int age = today.year - birthDate.year;
+      if (today.month < birthDate.month ||
+          (today.month == birthDate.month && today.day < birthDate.day)) {
+        age--;
+      }
+      return age;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  Future<void> _performAction(int id, String action, {int? age}) async {
+    if (action == 'approve' && age != null && age < 18) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Underage Voter', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+          content: Text('This voter is under 18 years old. Are you sure you want to approve?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor),
+              child: const Text('Yes, Approve', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+
     try {
       switch (action) {
         case 'approve':
@@ -295,6 +330,25 @@ class _VoterManagementScreenState extends State<VoterManagementScreen>
                         color: AppTheme.textSecondary,
                       ),
                     ),
+                    if (voter['date_of_birth'] != null) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(Icons.cake_outlined, size: 12, color: AppTheme.textSecondary),
+                          const SizedBox(width: 4),
+                          Text(
+                            'DOB: ${voter['date_of_birth']} (Age: ${_calculateAge(voter['date_of_birth'])} yrs)',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: _calculateAge(voter['date_of_birth']) < 18 
+                                  ? AppTheme.errorColor 
+                                  : AppTheme.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -320,7 +374,7 @@ class _VoterManagementScreenState extends State<VoterManagementScreen>
             children: [
               if (status == 'pending') ...[
                 _actionButton('Approve', Icons.check_rounded, AppTheme.successColor,
-                    () => _performAction(voter['id'], 'approve')),
+                    () => _performAction(voter['id'], 'approve', age: _calculateAge(voter['date_of_birth']))),
                 const SizedBox(width: 8),
                 _actionButton('Reject', Icons.close_rounded, AppTheme.errorColor,
                     () => _performAction(voter['id'], 'reject')),

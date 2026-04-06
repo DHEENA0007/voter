@@ -2,6 +2,7 @@
 Serializers for the Secure Mobile Biometric Voting System API.
 """
 
+from datetime import date
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth.hashers import make_password, check_password
@@ -28,6 +29,14 @@ class VoterRegistrationSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'passcode': {'write_only': True},
         }
+
+    def validate_date_of_birth(self, value):
+        """Check if voter is at least 18 years old."""
+        today = date.today()
+        age = today.year - value.year - ((today.month, today.day) < (value.month, value.day))
+        if age < 18:
+            raise serializers.ValidationError("Voter must be at least 18 years old.")
+        return value
 
     def create(self, validated_data):
         # Hash the passcode before saving
